@@ -1,0 +1,19 @@
+#pragma once
+
+#define DEFAULT_XSIZE 512
+#define DEFAULT_YSIZE 512
+#define DEFAULT_ZSIZE 512
+
+#define DEFAULT_RHO 0.1
+#define DEFAULT_PHI 0.0
+
+#define DEFAULT_KAPPA 0.1
+#define DEFAULT_MU 0.001
+
+#define DEFAULT_BETA_01 2.5
+#define DEFAULT_BETA_10 2.0
+#define DEFAULT_BETA_11 2.0
+#define DEFAULT_BETA_20 2.0
+#define DEFAULT_BETA_21 1.0
+#define DEFAULT_BETA_30 1.0
+#define DEFAULT_BETA_31 1.0

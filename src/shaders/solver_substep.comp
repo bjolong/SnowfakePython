@@ -1,0 +1,274 @@
+#version 450
+#pragma shader_stage(compute)
+
+// ./_deps/glslang-build/StandAlone/glslang -e main --target-env vulkan1.2 ./init_fields.comp
+
+// Voxel sizes - overridable defaults
+layout (constant_id = 0) const float x_size = 64;
+layout (constant_id = 1) const float y_size = 64;
+layout (constant_id = 2) const float z_size = 64;
+layout (constant_id = 3) const float radiusT = 30;
+layout (constant_id = 4) const float radiusZ = 30;
+
+// Simulation parameters - overridable defaults
+layout (constant_id = 5) const float rho = 0.12;
+layout (constant_id = 6) const float phi = 0.0;
+layout (constant_id = 7) const float kappa_01 = 0.1;
+layout (constant_id = 8) const float kappa_10 = 0.1;
+layout (constant_id = 9) const float kappa_11 = 0.1;
+layout (constant_id = 10) const float kappa_20 = 0.1;
+layout (constant_id = 11) const float kappa_21 = 0.1;
+layout (constant_id = 12) const float kappa_30 = 0.1;
+layout (constant_id = 13) const float kappa_31 = 0.1;
+layout (constant_id = 14) const float mu_01 = 0.001;
+layout (constant_id = 15) const float mu_10 = 0.001;
+layout (constant_id = 16) const float mu_11 = 0.001;
+layout (constant_id = 17) const float mu_20 = 0.001;
+layout (constant_id = 18) const float mu_21 = 0.001;
+layout (constant_id = 19) const float mu_30 = 0.001;
+layout (constant_id = 20) const float mu_31 = 0.001;
+layout (constant_id = 21) const float beta_01 = 2.5;
+layout (constant_id = 22) const float beta_10 = 2.0;
+layout (constant_id = 23) const float beta_11 = 2.0;
+layout (constant_id = 24) const float beta_20 = 2.0;
+layout (constant_id = 25) const float beta_21 = 1.0;
+layout (constant_id = 26) const float beta_30 = 1.0;
+layout (constant_id = 27) const float beta_31 = 1.0;
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout (set = 0, binding = 0) restrict readonly buffer flds_in
+  { float in_flds[]; };
+layout (set = 0, binding = 1) restrict writeonly buffer flds_out
+  { float out_flds[]; };
+
+#define FIELD_COUNT 3
+
+#define FIELD_OCCUPANCY      0
+#define FIELD_DIFFUSIVE_MASS 1
+#define FIELD_BOUNDARY_MASS  2
+
+#define BOUNDARY_THICKNESS 3
+
+#define ACCUMULATE_Z0_MASS_AND_BOUNDARY_T \
+  if (in_flds[FIELD_OCCUPANCY*total_size + idx] > 0.0) \
+  { \
+    z0_mass += in_flds[FIELD_DIFFUSIVE_MASS*total_size + in_order_idx]; \
+    detect_boundary_T += 1; \
+    \
+  } else \
+  { \
+    z0_mass += in_flds[FIELD_DIFFUSIVE_MASS*total_size + idx]; \
+    \
+  }
+
+#define ACCUMULATE_Z1_MASS_AND_BOUNDARY_Z \
+  if (in_flds[FIELD_OCCUPANCY*total_size + idx] > 0.0) \
+  { \
+    z1_mass += z0_mass; \
+    detect_boundary_Z += 1; \
+    \
+  } else \
+  { \
+    uint idx_ZN = idx; \
+    const float mass_origin = in_flds[FIELD_DIFFUSIVE_MASS*total_size + idx_ZN]; \
+    z1_mass += mass_origin; \
+    idx_ZN = idx + 1; \
+    const float mass_xp1 = in_flds[FIELD_DIFFUSIVE_MASS*total_size + idx_ZN]; \
+    z1_mass += \
+      ((in_flds[FIELD_OCCUPANCY*total_size + idx_ZN] > 0.0) ? mass_origin : mass_xp1); \
+    idx_ZN = idx - 1; \
+    const float mass_xm1 = in_flds[FIELD_DIFFUSIVE_MASS*total_size + idx_ZN]; \
+    z1_mass += \
+      ((in_flds[FIELD_OCCUPANCY*total_size + idx_ZN] > 0.0) ? mass_origin : mass_xm1); \
+    idx_ZN = idx + int(x_size); \
+    const float mass_yp1 = in_flds[FIELD_DIFFUSIVE_MASS*total_size + idx_ZN]; \
+    z1_mass += \
+      ((in_flds[FIELD_OCCUPANCY*total_size + idx_ZN] > 0.0) ? mass_origin : mass_yp1); \
+    idx_ZN = idx - int(x_size); \
+    const float mass_ym1 = in_flds[FIELD_DIFFUSIVE_MASS*total_size + idx_ZN]; \
+    z1_mass += \
+      ((in_flds[FIELD_OCCUPANCY*total_size + idx_ZN] > 0.0) ? mass_origin : mass_ym1); \
+    idx_ZN = (idx + int(x_size)) - 1; \
+    const float mass_zp1 = in_flds[FIELD_DIFFUSIVE_MASS*total_size + idx_ZN]; \
+    z1_mass += \
+      ((in_flds[FIELD_OCCUPANCY*total_size + idx_ZN] > 0.0) ? mass_origin : mass_zp1); \
+    idx_ZN = (idx - int(x_size)) + 1; \
+    const float mass_zm1 = in_flds[FIELD_DIFFUSIVE_MASS*total_size + idx_ZN]; \
+    z1_mass += \
+      ((in_flds[FIELD_OCCUPANCY*total_size + idx_ZN] > 0.0) ? mass_origin : mass_zm1); \
+  }
+
+void main()
+{
+  const uint i = uint(gl_GlobalInvocationID.x);
+  if (i >= uint(x_size)) return;
+  const uint j = uint(gl_GlobalInvocationID.y);
+  if (j >= uint(y_size)) return;
+  const uint k = uint(gl_GlobalInvocationID.z);
+  if (k >= uint(z_size)) return;
+
+  const float kappa_array[8] = {
+    0.0, kappa_01, kappa_10, kappa_11,
+    kappa_20, kappa_21, kappa_30, kappa_31
+  };
+  const float mu_array[8] = {
+    0.0, mu_01, mu_10, mu_11,
+    mu_20, mu_21, mu_30, mu_31
+  };
+  const float beta_array[8] = {
+    0.0, beta_01, beta_10, beta_11,
+    beta_20, beta_21, beta_30, beta_31
+  };
+
+  const uint total_size =
+      uint(z_size) * uint(y_size) * uint(x_size);
+  uint in_order_idx = (k*uint(y_size) + j)*uint(x_size) + i;
+
+  int bi = int(i) - (int(x_size) / 2);
+  int bj = int(j) - (int(y_size) / 2);
+  int bk = int(k) - (int(z_size) / 2);
+
+  const bool outside_radius_condition =
+     (((-(bi+bj)) > int(radiusT)) || ((-bi) > int(radiusT)) ||
+      ((-bj) > int(radiusT)) || (((bi+bj) >= int(radiusT)) ||
+      ((bi) >= int(radiusT)) || ((bj) >= int(radiusT))) ||
+      ((-bk) > int(radiusZ)) || (bk >= int(radiusZ)));
+  const int radiusT_plus_boundary = int(radiusT) + BOUNDARY_THICKNESS;
+  const int radiusZ_plus_boundary = int(radiusZ) + BOUNDARY_THICKNESS;
+  const bool outside_boundary_condition =
+     (((-(bi+bj)) > radiusT_plus_boundary) ||
+      ((-bi) > radiusT_plus_boundary) ||
+      ((-bj) > radiusT_plus_boundary) ||
+      (((bi+bj) >= radiusT_plus_boundary) ||
+      ((bi) >= radiusT_plus_boundary) ||
+      ((bj) >= radiusT_plus_boundary)) ||
+      ((-bk) > radiusZ_plus_boundary) ||
+      (bk >= radiusZ_plus_boundary));
+
+  if (outside_boundary_condition)
+  {
+    // This data should never be touched, so it should be fine either way.
+    // Early exit.
+    return;
+  } else // (outside_boundary_condition)
+  {
+    uint dest_in_order_idx = in_order_idx;
+    if (outside_radius_condition)
+    {
+      if ((bi+bj) >= int(radiusT))
+      {
+        bi -= int(radiusT);
+        bj -= int(radiusT);
+      }
+      if ((-(bi+bj)) > int(radiusT))
+      {
+        bi += int(radiusT);
+        bj += int(radiusT);
+      }
+      if (bi >= int(radiusT))
+      {
+        bi -= (2*int(radiusT));
+        bj += int(radiusT);
+      }
+      if ((-bi) > int(radiusT))
+      {
+        bi += (2*int(radiusT));
+        bj -= int(radiusT);
+      }
+      if (bj >= int(radiusT))
+      {
+        bi += int(radiusT);
+        bj -= (2*int(radiusT));
+      }
+      if ((-bj) > int(radiusT))
+      {
+        bi -= int(radiusT);
+        bj += (2*int(radiusT));
+      }
+      if ((bi+bj) >= int(radiusT))
+      {
+        bi -= int(radiusT);
+        bj -= int(radiusT);
+      }
+      if ((-(bi+bj)) > int(radiusT))
+      {
+        bi += int(radiusT);
+        bj += int(radiusT);
+      }
+      if (bk > int(radiusZ))
+      {
+        bk -= (2*int(radiusZ));
+      }
+      if ((-bk) > int(radiusZ))
+      {
+        bk += (2*int(radiusZ));
+      }
+      int tmp_i = bi + (int(x_size) / 2);
+      int tmp_j = bj + (int(y_size) / 2);
+      int tmp_k = bk + (int(z_size) / 2);
+      in_order_idx = (tmp_k*uint(y_size) + tmp_j)*uint(x_size) + tmp_i;
+
+    } // (outside_radius_condition)
+
+    // Set central mass unconditionally.
+    uint idx = in_order_idx;
+    float z0_mass = in_flds[FIELD_DIFFUSIVE_MASS*total_size + idx];
+    int detect_boundary_T = 0;
+
+    // Detect boundary T and sum masses for the six T neighbours.
+    idx = in_order_idx + 1;
+    ACCUMULATE_Z0_MASS_AND_BOUNDARY_T
+    idx = in_order_idx - 1;
+    ACCUMULATE_Z0_MASS_AND_BOUNDARY_T
+    idx = in_order_idx + int(x_size);
+    ACCUMULATE_Z0_MASS_AND_BOUNDARY_T
+    idx = in_order_idx - int(x_size);
+    ACCUMULATE_Z0_MASS_AND_BOUNDARY_T
+    idx = (in_order_idx + int(x_size)) - 1;
+    ACCUMULATE_Z0_MASS_AND_BOUNDARY_T
+    idx = (in_order_idx - int(x_size)) + 1;
+    ACCUMULATE_Z0_MASS_AND_BOUNDARY_T
+
+    float z1_mass = 0.0;
+    int detect_boundary_Z = 0;
+
+    idx = in_order_idx - (int(x_size) * int(y_size));
+    ACCUMULATE_Z1_MASS_AND_BOUNDARY_Z
+    idx = in_order_idx + (int(x_size) * int(y_size));
+    ACCUMULATE_Z1_MASS_AND_BOUNDARY_Z
+
+    bool this_occupancy = (in_flds[FIELD_OCCUPANCY*total_size + in_order_idx] > 0.0);
+
+    const bool backfill_because_neighbours =
+      ((detect_boundary_T >= 4) || (detect_boundary_Z >= 2));
+
+    // Write back diffuse mass.
+    float diffuse_mass = (3.0 * z1_mass + 8.0 * z0_mass) * (1.0 / 98.0);
+
+    const int neighbours = (detect_boundary_T << 1) | detect_boundary_Z;
+
+    float boundary_mass_value = in_flds[FIELD_BOUNDARY_MASS*total_size + in_order_idx];
+
+    const bool already_crystallised = this_occupancy || backfill_because_neighbours;
+    bool crystallisation_criterion = false;
+    // Has to not be crystalised and also have crystal neighbours to begin.
+    if ((!already_crystallised) && (neighbours > 0))
+    {
+      float freezing_mass_exchange = ((1.0 - kappa_array[neighbours]) * diffuse_mass);
+      boundary_mass_value += freezing_mass_exchange;
+      diffuse_mass -= freezing_mass_exchange;
+      crystallisation_criterion = (boundary_mass_value >= beta_array[neighbours]);
+      float melting_mass_exchange = mu_array[neighbours] * boundary_mass_value;
+      diffuse_mass += melting_mass_exchange;
+      boundary_mass_value -= melting_mass_exchange;
+
+    } // ((!already_crystallised) && (neighbours > 0))
+
+    out_flds[FIELD_OCCUPANCY*total_size + dest_in_order_idx] =
+      float(already_crystallised || crystallisation_criterion);
+    out_flds[FIELD_DIFFUSIVE_MASS*total_size + dest_in_order_idx] = diffuse_mass;
+    out_flds[FIELD_BOUNDARY_MASS*total_size + dest_in_order_idx] = boundary_mass_value;
+
+  } // else (outside_boundary_condition)
+}

@@ -1,0 +1,13 @@
+#pragma once
+
+#ifndef M_SQRT1_2
+#define M_SQRT1_2	0.707106781186547524401
+#endif // M_SQRT1_2
+
+#define SOLVER_FIELD_COUNT 3
+
+#define FIELD_OCCUPANCY      0
+#define FIELD_DIFFUSIVE_MASS 1
+#define FIELD_BOUNDARY_MASS  2
+
+#define BOUNDARY_THICKNESS 3

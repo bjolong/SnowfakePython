@@ -1,0 +1,57 @@
+site_name: SnowfakePython
+repo_url: https://github.com/bjolong/SnowfakePython.git
+
+theme:
+  name: "material"
+  palette:
+      primary: custom
+  features:
+    - content.code.copy
+    - content.code.select
+    - search.suggest
+    - search.highlight
+    - search.share
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_submodules: true
+            docstring_style: sphinx
+          paths: [.]
+          import:
+          # Example:
+          # Docs website: https://mpi4py.readthedocs.io/en/stable/mpi4py.html
+          # -> https://mpi4py.readthedocs.io/en/stable/objects.inv
+          - https://docs.python.org/3/objects.inv
+          - https://docs.python-requests.org/en/master/objects.inv
+          - https://pint.readthedocs.io/en/stable/objects.inv
+  - glightbox
+  - search
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.arithmatex:
+      generic: true
+  - attr_list
+  - md_in_html
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+
+nav:
+  - reference.md

@@ -1,0 +1,32 @@
+[project]
+name = "SnowfakePython"
+version = "0.0.1"
+requires-python = ">=3.8"
+dependencies = [
+]
+authors = [
+    {name = "Ben Long", email = "bjolong@gmail.com"},
+]
+description = "Vulkan-based GPU snowflake crystallisation simulator with Python interface."
+readme = "README.md"
+keywords = ["snowflake", "crystallization", "simulation"]
+classifiers = [
+    "Programming Language :: Python :: 3"
+]
+
+[project.optional-dependencies]
+docs = ["mkdocs", "mkdocstrings[python]", "mkdocs-material", "mkdocs-glightbox"]
+tests = []
+
+[build-system]
+requires = [
+    "scikit-build-core>=0.8.2", 
+    "wheel", 
+    "nanobind>=1.9.2", 
+    "cmake>=3.18",
+]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+sdist.exclude = [".gitignore", "venv", ".vscode", "build", "build_SnowfakePython"]
+wheel.expand-macos-universal-tags = true

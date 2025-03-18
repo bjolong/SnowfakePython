@@ -1,0 +1,68 @@
+#version 450
+#pragma shader_stage(compute)
+
+// ./_deps/glslang-build/StandAlone/glslang -e main --target-env vulkan1.2 ./init_fields.comp
+
+// Voxel sizes - overridable defaults
+layout (constant_id = 0) const float x_size = 64;
+layout (constant_id = 1) const float y_size = 64;
+layout (constant_id = 2) const float z_size = 64;
+layout (constant_id = 3) const float radiusT = 30;
+layout (constant_id = 4) const float radiusZ = 30;
+
+// Simulation parameters - overridable defaults
+layout (constant_id = 5) const float rho = 0.12;
+layout (constant_id = 6) const float phi = 0.0;
+layout (constant_id = 7) const float kappa_01 = 0.1;
+layout (constant_id = 8) const float kappa_10 = 0.1;
+layout (constant_id = 9) const float kappa_11 = 0.1;
+layout (constant_id = 10) const float kappa_20 = 0.1;
+layout (constant_id = 11) const float kappa_21 = 0.1;
+layout (constant_id = 12) const float kappa_30 = 0.1;
+layout (constant_id = 13) const float kappa_31 = 0.1;
+layout (constant_id = 14) const float mu_01 = 0.001;
+layout (constant_id = 15) const float mu_10 = 0.001;
+layout (constant_id = 16) const float mu_11 = 0.001;
+layout (constant_id = 17) const float mu_20 = 0.001;
+layout (constant_id = 18) const float mu_21 = 0.001;
+layout (constant_id = 19) const float mu_30 = 0.001;
+layout (constant_id = 20) const float mu_31 = 0.001;
+layout (constant_id = 21) const float beta_01 = 2.5;
+layout (constant_id = 22) const float beta_10 = 2.0;
+layout (constant_id = 23) const float beta_11 = 2.0;
+layout (constant_id = 24) const float beta_20 = 2.0;
+layout (constant_id = 25) const float beta_21 = 1.0;
+layout (constant_id = 26) const float beta_30 = 1.0;
+layout (constant_id = 27) const float beta_31 = 1.0;
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout (set = 0, binding = 0) buffer flds_in { float in_flds[]; };
+layout (set = 1, binding = 0, r16_snorm) uniform writeonly image3D quantity_tex;
+
+#define FIELD_COUNT 3
+
+#define FIELD_OCCUPANCY      0
+#define FIELD_DIFFUSIVE_MASS 1
+#define FIELD_BOUNDARY_MASS  2
+
+#define BOUNDARY_THICKNESS 3
+
+void main()
+{
+  const uint i = uint(gl_GlobalInvocationID.x);
+  if (i >= uint(x_size)) return;
+  const uint j = uint(gl_GlobalInvocationID.y);
+  if (j >= uint(y_size)) return;
+  const uint k = uint(gl_GlobalInvocationID.z);
+  if (k >= uint(z_size)) return;
+
+  const uint total_size =
+      uint(z_size) * uint(y_size) * uint(x_size);
+  const uint in_order_idx = (k*uint(y_size) + j)*uint(x_size) + i;
+
+  const float occupancy = in_flds[FIELD_OCCUPANCY*total_size + in_order_idx];
+
+  imageStore(quantity_tex, ivec3(gl_GlobalInvocationID.xyz),
+    vec4(occupancy, 0, 0, 0));
+}
