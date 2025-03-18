@@ -1,8 +1,9 @@
 # Welcome to SnowfakePython
 
 This is the documentation for SnowfakePython, a Python API to an implementation
-of the Gravner and Griffeath 2007 method for modelling snow crystal growth
-(snowflakes).
+of the Gravner and Griffeath 2007 method
+[here](https://www.math.ucdavis.edu/~gravner/papers/h3l.pdf) for modelling snow
+crystal growth (snowf(l)akes).
 
 The crystallisation simulation is implemented on GPU through the Vulkan API,
 with an optional GUI through the SDL2 library. The only dependencies the user
