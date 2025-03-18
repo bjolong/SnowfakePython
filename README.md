@@ -15,7 +15,7 @@ module is installed from source through `pip` or similar.
 
 To install, use:
 ```shell
-$ pip install SnowfakePython@https://github.com/bjolong/SnowfakePython.git
+$ pip install SnowfakePython@git+https://github.com/bjolong/SnowfakePython.git
 ```
 
 then once installed, the `examples` directory contains some example Python

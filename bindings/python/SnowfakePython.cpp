@@ -33,7 +33,7 @@ struct Intermediaries_Measure
 
 NB_MODULE(SnowfakePython, m)
 {
-//  nb::set_leak_warnings(false);
+  nb::set_leak_warnings(false);
 
   m.doc() =
     R"(
